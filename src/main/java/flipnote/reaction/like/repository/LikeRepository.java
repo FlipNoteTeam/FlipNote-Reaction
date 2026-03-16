@@ -1,5 +1,6 @@
 package flipnote.reaction.like.repository;
 
+import java.util.List;
 import java.util.Optional;
 
 import org.springframework.data.domain.Page;
@@ -16,4 +17,6 @@ public interface LikeRepository extends JpaRepository<Like, Long> {
 	Optional<Like> findByTargetTypeAndTargetIdAndUserId(LikeTargetType targetType, Long targetId, Long userId);
 
 	Page<Like> findByTargetTypeAndUserId(LikeTargetType targetType, Long userId, Pageable pageable);
+
+	List<Like> findByTargetTypeAndTargetIdInAndUserId(LikeTargetType targetType, List<Long> targetIds, Long userId);
 }

@@ -1,5 +1,10 @@
 package flipnote.reaction.like.service;
 
+import java.util.List;
+import java.util.Map;
+import java.util.Set;
+import java.util.stream.Collectors;
+
 import org.springframework.stereotype.Component;
 
 import flipnote.reaction.common.exception.BizException;
@@ -22,5 +27,15 @@ public class LikeReader {
 
 	public boolean isLiked(LikeTargetType targetType, Long targetId, Long userId) {
 		return likeRepository.existsByTargetTypeAndTargetIdAndUserId(targetType, targetId, userId);
+	}
+
+	public Map<Long, Boolean> areLiked(LikeTargetType targetType, List<Long> targetIds, Long userId) {
+		Set<Long> likedIds = likeRepository.findByTargetTypeAndTargetIdInAndUserId(targetType, targetIds, userId)
+			.stream()
+			.map(Like::getTargetId)
+			.collect(Collectors.toSet());
+
+		return targetIds.stream()
+			.collect(Collectors.toMap(id -> id, likedIds::contains));
 	}
 }

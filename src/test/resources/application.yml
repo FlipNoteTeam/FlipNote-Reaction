@@ -17,6 +17,8 @@ spring:
         dialect: org.hibernate.dialect.H2Dialect
 
 grpc:
+  server:
+    port: 0
   cardset:
     host: localhost
     port: 9090
