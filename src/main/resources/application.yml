@@ -20,6 +20,8 @@ spring:
         dialect: org.hibernate.dialect.MySQLDialect
 
 grpc:
+  server:
+    port: ${GRPC_SERVER_PORT:9093}
   cardset:
     host: ${GRPC_CARDSET_HOST:cardset-service}
     port: ${GRPC_CARDSET_PORT:9095}

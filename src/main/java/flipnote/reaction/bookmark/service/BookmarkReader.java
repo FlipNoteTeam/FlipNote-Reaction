@@ -1,5 +1,10 @@
 package flipnote.reaction.bookmark.service;
 
+import java.util.List;
+import java.util.Map;
+import java.util.Set;
+import java.util.stream.Collectors;
+
 import org.springframework.stereotype.Component;
 
 import flipnote.reaction.bookmark.entity.Bookmark;
@@ -22,5 +27,15 @@ public class BookmarkReader {
 
 	public boolean isBookmarked(BookmarkTargetType targetType, Long targetId, Long userId) {
 		return bookmarkRepository.existsByTargetTypeAndTargetIdAndUserId(targetType, targetId, userId);
+	}
+
+	public Map<Long, Boolean> areBookmarked(BookmarkTargetType targetType, List<Long> targetIds, Long userId) {
+		Set<Long> bookmarkedIds = bookmarkRepository.findByTargetTypeAndTargetIdInAndUserId(targetType, targetIds, userId)
+			.stream()
+			.map(Bookmark::getTargetId)
+			.collect(Collectors.toSet());
+
+		return targetIds.stream()
+			.collect(Collectors.toMap(id -> id, bookmarkedIds::contains));
 	}
 }
