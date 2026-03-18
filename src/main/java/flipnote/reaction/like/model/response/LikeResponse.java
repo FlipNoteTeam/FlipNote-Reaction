@@ -6,16 +6,17 @@ import cardset.Cardset.CardSetSummary;
 import flipnote.reaction.like.entity.Like;
 
 public record LikeResponse(
-	String targetType,
-	Long targetId,
-	Long targetGroupId,
+	LikeTargetResponse target,
 	LocalDateTime likedAt
 ) {
 	public static LikeResponse from(Like like, CardSetSummary summary) {
 		return new LikeResponse(
-			like.getTargetType().name(),
-			like.getTargetId(),
-			summary != null ? summary.getGroupId() : null,
+			new LikeTargetResponse(
+				like.getTargetType().name(),
+				like.getTargetId(),
+				summary != null ? summary.getGroupId() : null,
+				summary != null ? summary.getName() : null
+			),
 			like.getCreatedAt()
 		);
 	}
