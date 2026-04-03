@@ -3,7 +3,6 @@ package flipnote.reaction.infrastructure.messaging;
 import org.springframework.amqp.rabbit.core.RabbitTemplate;
 import org.springframework.stereotype.Component;
 
-import flipnote.reaction.infrastructure.config.RabbitMqConfig;
 import lombok.RequiredArgsConstructor;
 import lombok.extern.slf4j.Slf4j;
 

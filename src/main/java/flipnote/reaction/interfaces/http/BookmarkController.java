@@ -11,13 +11,13 @@ import org.springframework.web.bind.annotation.RequestHeader;
 import org.springframework.web.bind.annotation.RequestMapping;
 import org.springframework.web.bind.annotation.RestController;
 
+import flipnote.reaction.application.bookmark.BookmarkResult;
 import flipnote.reaction.application.bookmark.BookmarkService;
 import flipnote.reaction.domain.bookmark.BookmarkTargetType;
 import flipnote.reaction.interfaces.http.common.IdResponse;
 import flipnote.reaction.interfaces.http.common.PagingResponse;
 import flipnote.reaction.interfaces.http.dto.request.BookmarkSearchRequest;
 import flipnote.reaction.interfaces.http.dto.request.BookmarkTargetTypeRequest;
-import flipnote.reaction.interfaces.http.dto.response.BookmarkResponse;
 import jakarta.validation.Valid;
 import lombok.RequiredArgsConstructor;
 
@@ -35,7 +35,7 @@ public class BookmarkController {
 		@PathVariable Long targetId
 	) {
 		BookmarkTargetType type = BookmarkTargetTypeRequest.from(targetType).toEntity();
-		return bookmarkService.addBookmark(type, targetId, userId);
+		return IdResponse.from(bookmarkService.addBookmark(type, targetId, userId));
 	}
 
 	@DeleteMapping("/{targetType}/{targetId}")
@@ -49,12 +49,12 @@ public class BookmarkController {
 	}
 
 	@GetMapping("/{targetType}")
-	public PagingResponse<BookmarkResponse> getBookmarks(
+	public PagingResponse<BookmarkResult> getBookmarks(
 		@RequestHeader(USER_ID) Long userId,
 		@PathVariable String targetType,
 		@Valid @ModelAttribute BookmarkSearchRequest request
 	) {
 		BookmarkTargetType type = BookmarkTargetTypeRequest.from(targetType).toEntity();
-		return bookmarkService.getBookmarks(type, userId, request);
+		return PagingResponse.from(bookmarkService.getBookmarks(type, userId, request));
 	}
 }

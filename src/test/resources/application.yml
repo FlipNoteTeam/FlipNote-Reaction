@@ -15,10 +15,11 @@ spring:
     properties:
       hibernate:
         dialect: org.hibernate.dialect.H2Dialect
-
-grpc:
-  server:
-    port: 0
-  cardset:
-    host: localhost
-    port: 9090
+  grpc:
+    server:
+      port: 0
+    client:
+      channels:
+        cardset:
+          address: static://localhost:9090
+          negotiation-type: PLAINTEXT

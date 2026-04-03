@@ -1,4 +1,4 @@
-package flipnote.reaction.infrastructure.config;
+package flipnote.reaction.infrastructure.messaging;
 
 import org.springframework.amqp.core.TopicExchange;
 import org.springframework.amqp.support.converter.Jackson2JsonMessageConverter;

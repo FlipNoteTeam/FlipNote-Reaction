@@ -11,13 +11,13 @@ import org.springframework.web.bind.annotation.RequestHeader;
 import org.springframework.web.bind.annotation.RequestMapping;
 import org.springframework.web.bind.annotation.RestController;
 
+import flipnote.reaction.application.like.LikeResult;
 import flipnote.reaction.application.like.LikeService;
 import flipnote.reaction.domain.like.LikeTargetType;
 import flipnote.reaction.interfaces.http.common.IdResponse;
 import flipnote.reaction.interfaces.http.common.PagingResponse;
 import flipnote.reaction.interfaces.http.dto.request.LikeSearchRequest;
 import flipnote.reaction.interfaces.http.dto.request.LikeTargetTypeRequest;
-import flipnote.reaction.interfaces.http.dto.response.LikeResponse;
 import jakarta.validation.Valid;
 import lombok.RequiredArgsConstructor;
 
@@ -35,7 +35,7 @@ public class LikeController {
 		@PathVariable Long targetId
 	) {
 		LikeTargetType type = LikeTargetTypeRequest.from(targetType).toEntity();
-		return likeService.addLike(type, targetId, userId);
+		return IdResponse.from(likeService.addLike(type, targetId, userId));
 	}
 
 	@DeleteMapping("/{targetType}/{targetId}")
@@ -49,12 +49,12 @@ public class LikeController {
 	}
 
 	@GetMapping("/{targetType}")
-	public PagingResponse<LikeResponse> getLikes(
+	public PagingResponse<LikeResult> getLikes(
 		@RequestHeader(USER_ID) Long userId,
 		@PathVariable String targetType,
 		@Valid @ModelAttribute LikeSearchRequest request
 	) {
 		LikeTargetType type = LikeTargetTypeRequest.from(targetType).toEntity();
-		return likeService.getLikes(type, userId, request);
+		return PagingResponse.from(likeService.getLikes(type, userId, request));
 	}
 }

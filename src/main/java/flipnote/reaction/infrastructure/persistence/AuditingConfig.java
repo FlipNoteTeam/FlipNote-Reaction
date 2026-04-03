@@ -1,4 +1,4 @@
-package flipnote.reaction.infrastructure.config;
+package flipnote.reaction.infrastructure.persistence;
 
 import org.springframework.context.annotation.Configuration;
 import org.springframework.data.jpa.repository.config.EnableJpaAuditing;

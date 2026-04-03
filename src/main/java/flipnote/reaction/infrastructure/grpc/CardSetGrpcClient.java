@@ -15,7 +15,6 @@ import cardset.Cardset.IsCardSetViewableResponse;
 import cardset.CardsetServiceGrpc;
 import flipnote.reaction.domain.common.BizException;
 import flipnote.reaction.domain.common.CommonErrorCode;
-import io.grpc.ManagedChannel;
 import io.grpc.StatusRuntimeException;
 import lombok.extern.slf4j.Slf4j;
 
@@ -25,15 +24,15 @@ public class CardSetGrpcClient {
 
 	private final CardsetServiceGrpc.CardsetServiceBlockingStub stub;
 
-	public CardSetGrpcClient(ManagedChannel cardSetChannel) {
-		this.stub = CardsetServiceGrpc.newBlockingStub(cardSetChannel);
+	public CardSetGrpcClient(CardsetServiceGrpc.CardsetServiceBlockingStub cardSetStub) {
+		this.stub = cardSetStub;
 	}
 
 	public boolean isCardSetViewable(Long cardSetId, Long userId) {
 		try {
 			IsCardSetViewableRequest request = IsCardSetViewableRequest.newBuilder()
-				.setCardSetId(cardSetId.intValue())
-				.setUserId(userId.intValue())
+				.setCardSetId(cardSetId)
+				.setUserId(userId)
 				.build();
 
 			IsCardSetViewableResponse response = stub.isCardSetViewable(request);
@@ -48,7 +47,7 @@ public class CardSetGrpcClient {
 		try {
 			GetCardSetsByIdsRequest request = GetCardSetsByIdsRequest.newBuilder()
 				.addAllCardSetIds(cardSetIds)
-				.setUserId(userId.intValue())
+				.setUserId(userId)
 				.build();
 
 			GetCardSetsByIdsResponse response = stub.getCardSetsByIds(request);

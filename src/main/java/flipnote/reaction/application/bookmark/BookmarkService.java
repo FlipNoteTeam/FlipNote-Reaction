@@ -1,26 +1,26 @@
 package flipnote.reaction.application.bookmark;
 
-import org.springframework.amqp.rabbit.core.RabbitTemplate;
+import java.util.List;
+import java.util.Map;
+
 import org.springframework.dao.DataIntegrityViolationException;
 import org.springframework.data.domain.Page;
 import org.springframework.stereotype.Service;
 import org.springframework.transaction.annotation.Transactional;
 
+import cardset.Cardset.CardSetSummary;
 import flipnote.reaction.domain.bookmark.Bookmark;
 import flipnote.reaction.domain.bookmark.BookmarkErrorCode;
 import flipnote.reaction.domain.bookmark.BookmarkRepository;
 import flipnote.reaction.domain.bookmark.BookmarkTargetType;
 import flipnote.reaction.domain.common.BizException;
-import flipnote.reaction.infrastructure.config.RabbitMqConfig;
-import flipnote.reaction.infrastructure.messaging.ReactionMessage;
-import flipnote.reaction.interfaces.http.common.IdResponse;
-import flipnote.reaction.interfaces.http.common.PagingResponse;
+import flipnote.reaction.domain.common.CommonErrorCode;
+import flipnote.reaction.infrastructure.messaging.RabbitMqConfig;
+import flipnote.reaction.infrastructure.grpc.CardSetGrpcClient;
+import flipnote.reaction.infrastructure.messaging.ReactionEventPublisher;
 import flipnote.reaction.interfaces.http.dto.request.BookmarkSearchRequest;
-import flipnote.reaction.interfaces.http.dto.response.BookmarkResponse;
 import lombok.RequiredArgsConstructor;
-import lombok.extern.slf4j.Slf4j;
 
-@Slf4j
 @Service
 @RequiredArgsConstructor
 @Transactional(readOnly = true)
@@ -28,11 +28,14 @@ public class BookmarkService {
 
 	private final BookmarkRepository bookmarkRepository;
 	private final BookmarkReader bookmarkReader;
-	private final RabbitTemplate rabbitTemplate;
+	private final ReactionEventPublisher eventPublisher;
+	private final CardSetGrpcClient cardSetGrpcClient;
 
-	@Transactional
-	public IdResponse addBookmark(BookmarkTargetType targetType, Long targetId, Long userId) {
-		// TODO: gRPC로 대상 존재 여부 검증 (CardSet/Group 서비스 호출)
+	@Transactional(noRollbackFor = DataIntegrityViolationException.class)
+	public Long addBookmark(BookmarkTargetType targetType, Long targetId, Long userId) {
+		if (!cardSetGrpcClient.isCardSetViewable(targetId, userId)) {
+			throw new BizException(CommonErrorCode.TARGET_NOT_VIEWABLE);
+		}
 
 		if (bookmarkReader.isBookmarked(targetType, targetId, userId)) {
 			throw new BizException(BookmarkErrorCode.ALREADY_BOOKMARKED);
@@ -50,9 +53,15 @@ public class BookmarkService {
 			throw new BizException(BookmarkErrorCode.ALREADY_BOOKMARKED);
 		}
 
-		publishEvent(RabbitMqConfig.ROUTING_KEY_BOOKMARK_ADDED, "BOOKMARK_ADDED", targetType, targetId, userId);
+		eventPublisher.publish(
+			RabbitMqConfig.ROUTING_KEY_BOOKMARK_ADDED,
+			"BOOKMARK_ADDED",
+			targetType.name(),
+			targetId,
+			userId
+		);
 
-		return IdResponse.from(bookmark.getId());
+		return bookmark.getId();
 	}
 
 	@Transactional
@@ -60,32 +69,29 @@ public class BookmarkService {
 		Bookmark bookmark = bookmarkReader.findByTargetAndUserId(targetType, targetId, userId);
 		bookmarkRepository.delete(bookmark);
 
-		publishEvent(RabbitMqConfig.ROUTING_KEY_BOOKMARK_REMOVED, "BOOKMARK_REMOVED", targetType, targetId, userId);
+		eventPublisher.publish(
+			RabbitMqConfig.ROUTING_KEY_BOOKMARK_REMOVED,
+			"BOOKMARK_REMOVED",
+			targetType.name(),
+			targetId,
+			userId
+		);
 	}
 
-	public PagingResponse<BookmarkResponse> getBookmarks(BookmarkTargetType targetType, Long userId,
+	public Page<BookmarkResult> getBookmarks(BookmarkTargetType targetType, Long userId,
 		BookmarkSearchRequest request) {
 		Page<Bookmark> bookmarkPage = bookmarkRepository.findByTargetTypeAndUserId(
 			targetType, userId, request.getPageRequest()
 		);
 
-		// TODO: gRPC로 대상 상세 정보 fetch (CardSet 서비스 호출)
+		List<Long> targetIds = bookmarkPage.getContent().stream()
+			.map(Bookmark::getTargetId)
+			.toList();
 
-		Page<BookmarkResponse> responsePage = bookmarkPage.map(BookmarkResponse::from);
-		return PagingResponse.from(responsePage);
-	}
+		Map<Long, CardSetSummary> cardSetMap = targetIds.isEmpty()
+			? Map.of()
+			: cardSetGrpcClient.getCardSetsByIds(targetIds, userId);
 
-	private void publishEvent(String routingKey, String eventType,
-		BookmarkTargetType targetType, Long targetId, Long userId) {
-		try {
-			rabbitTemplate.convertAndSend(
-				RabbitMqConfig.EXCHANGE,
-				routingKey,
-				new ReactionMessage(eventType, targetType.name(), targetId, userId)
-			);
-		} catch (Exception e) {
-			log.error("북마크 이벤트 발행 실패: eventType={}, targetType={}, targetId={}, userId={}",
-				eventType, targetType, targetId, userId, e);
-		}
+		return bookmarkPage.map(b -> BookmarkResult.from(b, cardSetMap.get(b.getTargetId())));
 	}
 }

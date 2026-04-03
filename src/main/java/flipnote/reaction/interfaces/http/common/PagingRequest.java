@@ -42,6 +42,6 @@ public class PagingRequest {
 	}
 
 	public String getSortBy() {
-		return sortBy != null ? sortBy.toUpperCase() : null;
+		return sortBy;
 	}
 }

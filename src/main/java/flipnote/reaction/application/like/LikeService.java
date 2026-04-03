@@ -1,26 +1,26 @@
 package flipnote.reaction.application.like;
 
-import org.springframework.amqp.rabbit.core.RabbitTemplate;
+import java.util.List;
+import java.util.Map;
+
 import org.springframework.dao.DataIntegrityViolationException;
 import org.springframework.data.domain.Page;
 import org.springframework.stereotype.Service;
 import org.springframework.transaction.annotation.Transactional;
 
+import cardset.Cardset.CardSetSummary;
 import flipnote.reaction.domain.common.BizException;
+import flipnote.reaction.domain.common.CommonErrorCode;
 import flipnote.reaction.domain.like.Like;
 import flipnote.reaction.domain.like.LikeErrorCode;
 import flipnote.reaction.domain.like.LikeRepository;
 import flipnote.reaction.domain.like.LikeTargetType;
-import flipnote.reaction.infrastructure.config.RabbitMqConfig;
-import flipnote.reaction.infrastructure.messaging.ReactionMessage;
-import flipnote.reaction.interfaces.http.common.IdResponse;
-import flipnote.reaction.interfaces.http.common.PagingResponse;
+import flipnote.reaction.infrastructure.messaging.RabbitMqConfig;
+import flipnote.reaction.infrastructure.grpc.CardSetGrpcClient;
+import flipnote.reaction.infrastructure.messaging.ReactionEventPublisher;
 import flipnote.reaction.interfaces.http.dto.request.LikeSearchRequest;
-import flipnote.reaction.interfaces.http.dto.response.LikeResponse;
 import lombok.RequiredArgsConstructor;
-import lombok.extern.slf4j.Slf4j;
 
-@Slf4j
 @Service
 @RequiredArgsConstructor
 @Transactional(readOnly = true)
@@ -28,11 +28,14 @@ public class LikeService {
 
 	private final LikeRepository likeRepository;
 	private final LikeReader likeReader;
-	private final RabbitTemplate rabbitTemplate;
+	private final ReactionEventPublisher eventPublisher;
+	private final CardSetGrpcClient cardSetGrpcClient;
 
-	@Transactional
-	public IdResponse addLike(LikeTargetType targetType, Long targetId, Long userId) {
-		// TODO: gRPC로 대상 존재 여부 검증 (CardSet/Group 서비스 호출)
+	@Transactional(noRollbackFor = DataIntegrityViolationException.class)
+	public Long addLike(LikeTargetType targetType, Long targetId, Long userId) {
+		if (!cardSetGrpcClient.isCardSetViewable(targetId, userId)) {
+			throw new BizException(CommonErrorCode.TARGET_NOT_VIEWABLE);
+		}
 
 		if (likeReader.isLiked(targetType, targetId, userId)) {
 			throw new BizException(LikeErrorCode.ALREADY_LIKED);
@@ -50,9 +53,15 @@ public class LikeService {
 			throw new BizException(LikeErrorCode.ALREADY_LIKED);
 		}
 
-		publishEvent(RabbitMqConfig.ROUTING_KEY_LIKE_ADDED, "LIKE_ADDED", targetType, targetId, userId);
+		eventPublisher.publish(
+			RabbitMqConfig.ROUTING_KEY_LIKE_ADDED,
+			"LIKE_ADDED",
+			targetType.name(),
+			targetId,
+			userId
+		);
 
-		return IdResponse.from(like.getId());
+		return like.getId();
 	}
 
 	@Transactional
@@ -60,31 +69,28 @@ public class LikeService {
 		Like like = likeReader.findByTargetAndUserId(targetType, targetId, userId);
 		likeRepository.delete(like);
 
-		publishEvent(RabbitMqConfig.ROUTING_KEY_LIKE_REMOVED, "LIKE_REMOVED", targetType, targetId, userId);
+		eventPublisher.publish(
+			RabbitMqConfig.ROUTING_KEY_LIKE_REMOVED,
+			"LIKE_REMOVED",
+			targetType.name(),
+			targetId,
+			userId
+		);
 	}
 
-	public PagingResponse<LikeResponse> getLikes(LikeTargetType targetType, Long userId, LikeSearchRequest request) {
+	public Page<LikeResult> getLikes(LikeTargetType targetType, Long userId, LikeSearchRequest request) {
 		Page<Like> likePage = likeRepository.findByTargetTypeAndUserId(
 			targetType, userId, request.getPageRequest()
 		);
 
-		// TODO: gRPC로 대상 상세 정보 fetch (CardSet 서비스 호출)
+		List<Long> targetIds = likePage.getContent().stream()
+			.map(Like::getTargetId)
+			.toList();
 
-		Page<LikeResponse> responsePage = likePage.map(LikeResponse::from);
-		return PagingResponse.from(responsePage);
-	}
+		Map<Long, CardSetSummary> cardSetMap = targetIds.isEmpty()
+			? Map.of()
+			: cardSetGrpcClient.getCardSetsByIds(targetIds, userId);
 
-	private void publishEvent(String routingKey, String eventType,
-		LikeTargetType targetType, Long targetId, Long userId) {
-		try {
-			rabbitTemplate.convertAndSend(
-				RabbitMqConfig.EXCHANGE,
-				routingKey,
-				new ReactionMessage(eventType, targetType.name(), targetId, userId)
-			);
-		} catch (Exception e) {
-			log.error("좋아요 이벤트 발행 실패: eventType={}, targetType={}, targetId={}, userId={}",
-				eventType, targetType, targetId, userId, e);
-		}
+		return likePage.map(l -> LikeResult.from(l, cardSetMap.get(l.getTargetId())));
 	}
 }
