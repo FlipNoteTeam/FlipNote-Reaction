@@ -13,8 +13,23 @@ public class ReactionEventPublisher {
 
 	private final RabbitTemplate rabbitTemplate;
 
-	public void publish(String routingKey, String eventType,
-		String targetType, Long targetId, Long userId) {
+	public void bookmarkAdded(String targetType, Long targetId, Long userId) {
+		publish(RabbitMqConfig.ROUTING_KEY_BOOKMARK_ADDED, "BOOKMARK_ADDED", targetType, targetId, userId);
+	}
+
+	public void bookmarkRemoved(String targetType, Long targetId, Long userId) {
+		publish(RabbitMqConfig.ROUTING_KEY_BOOKMARK_REMOVED, "BOOKMARK_REMOVED", targetType, targetId, userId);
+	}
+
+	public void likeAdded(String targetType, Long targetId, Long userId) {
+		publish(RabbitMqConfig.ROUTING_KEY_LIKE_ADDED, "LIKE_ADDED", targetType, targetId, userId);
+	}
+
+	public void likeRemoved(String targetType, Long targetId, Long userId) {
+		publish(RabbitMqConfig.ROUTING_KEY_LIKE_REMOVED, "LIKE_REMOVED", targetType, targetId, userId);
+	}
+
+	private void publish(String routingKey, String eventType, String targetType, Long targetId, Long userId) {
 		try {
 			rabbitTemplate.convertAndSend(
 				RabbitMqConfig.EXCHANGE,

@@ -3,24 +3,27 @@ package flipnote.reaction.application.bookmark;
 import java.util.List;
 import java.util.Map;
 
+import org.springframework.context.ApplicationEventPublisher;
 import org.springframework.dao.DataIntegrityViolationException;
 import org.springframework.data.domain.Page;
 import org.springframework.stereotype.Service;
 import org.springframework.transaction.annotation.Transactional;
 
-import cardset.Cardset.CardSetSummary;
+import flipnote.reaction.application.common.CardSetSummaryResult;
 import flipnote.reaction.domain.bookmark.Bookmark;
 import flipnote.reaction.domain.bookmark.BookmarkErrorCode;
 import flipnote.reaction.domain.bookmark.BookmarkRepository;
 import flipnote.reaction.domain.bookmark.BookmarkTargetType;
+import flipnote.reaction.domain.bookmark.event.BookmarkAddedEvent;
+import flipnote.reaction.domain.bookmark.event.BookmarkRemovedEvent;
 import flipnote.reaction.domain.common.BizException;
 import flipnote.reaction.domain.common.CommonErrorCode;
-import flipnote.reaction.infrastructure.messaging.RabbitMqConfig;
 import flipnote.reaction.infrastructure.grpc.CardSetGrpcClient;
-import flipnote.reaction.infrastructure.messaging.ReactionEventPublisher;
 import flipnote.reaction.interfaces.http.dto.request.BookmarkSearchRequest;
 import lombok.RequiredArgsConstructor;
+import lombok.extern.slf4j.Slf4j;
 
+@Slf4j
 @Service
 @RequiredArgsConstructor
 @Transactional(readOnly = true)
@@ -28,7 +31,7 @@ public class BookmarkService {
 
 	private final BookmarkRepository bookmarkRepository;
 	private final BookmarkReader bookmarkReader;
-	private final ReactionEventPublisher eventPublisher;
+	private final ApplicationEventPublisher eventPublisher;
 	private final CardSetGrpcClient cardSetGrpcClient;
 
 	@Transactional(noRollbackFor = DataIntegrityViolationException.class)
@@ -53,13 +56,7 @@ public class BookmarkService {
 			throw new BizException(BookmarkErrorCode.ALREADY_BOOKMARKED);
 		}
 
-		eventPublisher.publish(
-			RabbitMqConfig.ROUTING_KEY_BOOKMARK_ADDED,
-			"BOOKMARK_ADDED",
-			targetType.name(),
-			targetId,
-			userId
-		);
+		eventPublisher.publishEvent(new BookmarkAddedEvent(targetType.name(), targetId, userId));
 
 		return bookmark.getId();
 	}
@@ -69,13 +66,7 @@ public class BookmarkService {
 		Bookmark bookmark = bookmarkReader.findByTargetAndUserId(targetType, targetId, userId);
 		bookmarkRepository.delete(bookmark);
 
-		eventPublisher.publish(
-			RabbitMqConfig.ROUTING_KEY_BOOKMARK_REMOVED,
-			"BOOKMARK_REMOVED",
-			targetType.name(),
-			targetId,
-			userId
-		);
+		eventPublisher.publishEvent(new BookmarkRemovedEvent(targetType.name(), targetId, userId));
 	}
 
 	public Page<BookmarkResult> getBookmarks(BookmarkTargetType targetType, Long userId,
@@ -88,10 +79,20 @@ public class BookmarkService {
 			.map(Bookmark::getTargetId)
 			.toList();
 
-		Map<Long, CardSetSummary> cardSetMap = targetIds.isEmpty()
-			? Map.of()
-			: cardSetGrpcClient.getCardSetsByIds(targetIds, userId);
+		Map<Long, CardSetSummaryResult> cardSetMap = fetchCardSets(targetIds, userId);
 
 		return bookmarkPage.map(b -> BookmarkResult.from(b, cardSetMap.get(b.getTargetId())));
+	}
+
+	private Map<Long, CardSetSummaryResult> fetchCardSets(List<Long> targetIds, Long userId) {
+		if (targetIds.isEmpty()) {
+			return Map.of();
+		}
+		try {
+			return cardSetGrpcClient.getCardSetsByIds(targetIds, userId);
+		} catch (BizException e) {
+			log.warn("CardSet 조회 실패 — cardSet 없이 반환합니다: {}", e.getMessage());
+			return Map.of();
+		}
 	}
 }

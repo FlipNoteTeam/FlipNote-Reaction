@@ -2,17 +2,16 @@ package flipnote.reaction.infrastructure.grpc;
 
 import java.util.List;
 import java.util.Map;
-import java.util.function.Function;
 import java.util.stream.Collectors;
 
 import org.springframework.stereotype.Component;
 
-import cardset.Cardset.CardSetSummary;
 import cardset.Cardset.GetCardSetsByIdsRequest;
 import cardset.Cardset.GetCardSetsByIdsResponse;
 import cardset.Cardset.IsCardSetViewableRequest;
 import cardset.Cardset.IsCardSetViewableResponse;
 import cardset.CardsetServiceGrpc;
+import flipnote.reaction.application.common.CardSetSummaryResult;
 import flipnote.reaction.domain.common.BizException;
 import flipnote.reaction.domain.common.CommonErrorCode;
 import io.grpc.StatusRuntimeException;
@@ -43,7 +42,7 @@ public class CardSetGrpcClient {
 		}
 	}
 
-	public Map<Long, CardSetSummary> getCardSetsByIds(List<Long> cardSetIds, Long userId) {
+	public Map<Long, CardSetSummaryResult> getCardSetsByIds(List<Long> cardSetIds, Long userId) {
 		try {
 			GetCardSetsByIdsRequest request = GetCardSetsByIdsRequest.newBuilder()
 				.addAllCardSetIds(cardSetIds)
@@ -54,7 +53,16 @@ public class CardSetGrpcClient {
 			return response.getCardSetsList().stream()
 				.collect(Collectors.toMap(
 					cs -> (long) cs.getId(),
-					Function.identity()
+					cs -> new CardSetSummaryResult(
+						(long) cs.getId(),
+						cs.getName(),
+						(long) cs.getGroupId(),
+						cs.getVisibility(),
+						cs.getCategory(),
+						cs.getHashtag(),
+						(long) cs.getImageRefId(),
+						(long) cs.getCardCount()
+					)
 				));
 		} catch (StatusRuntimeException e) {
 			log.error("gRPC call failed: GetCardSetsByIds, cardSetIds={}, userId={}", cardSetIds, userId, e);

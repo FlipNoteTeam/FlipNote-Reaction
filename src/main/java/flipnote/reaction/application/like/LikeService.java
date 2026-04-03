@@ -3,24 +3,27 @@ package flipnote.reaction.application.like;
 import java.util.List;
 import java.util.Map;
 
+import org.springframework.context.ApplicationEventPublisher;
 import org.springframework.dao.DataIntegrityViolationException;
 import org.springframework.data.domain.Page;
 import org.springframework.stereotype.Service;
 import org.springframework.transaction.annotation.Transactional;
 
-import cardset.Cardset.CardSetSummary;
+import flipnote.reaction.application.common.CardSetSummaryResult;
 import flipnote.reaction.domain.common.BizException;
 import flipnote.reaction.domain.common.CommonErrorCode;
 import flipnote.reaction.domain.like.Like;
 import flipnote.reaction.domain.like.LikeErrorCode;
 import flipnote.reaction.domain.like.LikeRepository;
 import flipnote.reaction.domain.like.LikeTargetType;
-import flipnote.reaction.infrastructure.messaging.RabbitMqConfig;
+import flipnote.reaction.domain.like.event.LikeAddedEvent;
+import flipnote.reaction.domain.like.event.LikeRemovedEvent;
 import flipnote.reaction.infrastructure.grpc.CardSetGrpcClient;
-import flipnote.reaction.infrastructure.messaging.ReactionEventPublisher;
 import flipnote.reaction.interfaces.http.dto.request.LikeSearchRequest;
 import lombok.RequiredArgsConstructor;
+import lombok.extern.slf4j.Slf4j;
 
+@Slf4j
 @Service
 @RequiredArgsConstructor
 @Transactional(readOnly = true)
@@ -28,7 +31,7 @@ public class LikeService {
 
 	private final LikeRepository likeRepository;
 	private final LikeReader likeReader;
-	private final ReactionEventPublisher eventPublisher;
+	private final ApplicationEventPublisher eventPublisher;
 	private final CardSetGrpcClient cardSetGrpcClient;
 
 	@Transactional(noRollbackFor = DataIntegrityViolationException.class)
@@ -53,13 +56,7 @@ public class LikeService {
 			throw new BizException(LikeErrorCode.ALREADY_LIKED);
 		}
 
-		eventPublisher.publish(
-			RabbitMqConfig.ROUTING_KEY_LIKE_ADDED,
-			"LIKE_ADDED",
-			targetType.name(),
-			targetId,
-			userId
-		);
+		eventPublisher.publishEvent(new LikeAddedEvent(targetType.name(), targetId, userId));
 
 		return like.getId();
 	}
@@ -69,13 +66,7 @@ public class LikeService {
 		Like like = likeReader.findByTargetAndUserId(targetType, targetId, userId);
 		likeRepository.delete(like);
 
-		eventPublisher.publish(
-			RabbitMqConfig.ROUTING_KEY_LIKE_REMOVED,
-			"LIKE_REMOVED",
-			targetType.name(),
-			targetId,
-			userId
-		);
+		eventPublisher.publishEvent(new LikeRemovedEvent(targetType.name(), targetId, userId));
 	}
 
 	public Page<LikeResult> getLikes(LikeTargetType targetType, Long userId, LikeSearchRequest request) {
@@ -87,10 +78,20 @@ public class LikeService {
 			.map(Like::getTargetId)
 			.toList();
 
-		Map<Long, CardSetSummary> cardSetMap = targetIds.isEmpty()
-			? Map.of()
-			: cardSetGrpcClient.getCardSetsByIds(targetIds, userId);
+		Map<Long, CardSetSummaryResult> cardSetMap = fetchCardSets(targetIds, userId);
 
 		return likePage.map(l -> LikeResult.from(l, cardSetMap.get(l.getTargetId())));
+	}
+
+	private Map<Long, CardSetSummaryResult> fetchCardSets(List<Long> targetIds, Long userId) {
+		if (targetIds.isEmpty()) {
+			return Map.of();
+		}
+		try {
+			return cardSetGrpcClient.getCardSetsByIds(targetIds, userId);
+		} catch (BizException e) {
+			log.warn("CardSet 조회 실패 — cardSet 없이 반환합니다: {}", e.getMessage());
+			return Map.of();
+		}
 	}
 }
